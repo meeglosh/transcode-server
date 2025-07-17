@@ -11,12 +11,11 @@ import cors from 'cors';
 config();
 
 const app = express();
+const port = process.env.PORT || 3000;
 
 app.use(cors({
   origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
 }));
-
-const port = process.env.PORT || 3000;
 
 if (!port) {
   console.error("❌ PORT environment variable is not set!");
@@ -30,15 +29,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   {
     global: {
-      fetch: (url, options = {}) => {
-        return fetch(url, { ...options, duplex: 'half' });
-      }
+      fetch: (url, options = {}) => fetch(url, { ...options, duplex: 'half' }),
     }
   }
 );
 
 app.post('/transcode', upload.single('audio'), async (req, res) => {
   try {
+    if (!req.file) {
+      console.error("❌ No file uploaded in request.");
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
     const inputPath = req.file.path;
     const outputFileName = path.parse(req.file.originalname).name + '.mp3';
     const outputPath = `outputs/${outputFileName}`;
@@ -60,36 +62,33 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
         }
       });
 
-      ffmpeg.on('error', err => {
-        reject(new Error(`Failed to start FFmpeg: ${err.message}`));
-      });
+      ffmpeg.on('error', err => reject(new Error(`Failed to start FFmpeg: ${err.message}`)));
     });
 
+    const fileStream = fs.createReadStream(outputPath);
     const { data, error } = await supabase.storage
       .from('transcoded-audio')
-      .upload(outputFileName, fs.createReadStream(outputPath), {
+      .upload(outputFileName, fileStream, {
         contentType: 'audio/mpeg',
-        upsert: true
+        upsert: true,
       });
+
+    console.log("📦 Supabase response:", { data, error });
 
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
 
-    console.log("📦 Supabase upload response:");
-    console.log("   data:", data);
-    console.log("   error:", error);
-
-    if (error || !data || typeof data.path !== 'string') {
-      return res.status(500).json({
-        error: 'Upload failed or invalid Supabase response',
-        details: {
-          data,
-          error
-        }
-      });
+    if (error) {
+      console.error("❌ Supabase upload error:", error);
+      return res.status(500).json({ error: error.message || 'Supabase upload failed' });
     }
 
-    console.log(`✅ File uploaded to Supabase: ${data.path}`);
+    if (!data || !data.path) {
+      console.error("❌ Supabase upload missing path:", data);
+      return res.status(500).json({ error: 'Upload succeeded but no path returned' });
+    }
+
+    console.log(`✅ File uploaded to Supabase at: ${data.path}`);
     return res.status(200).json({ success: true, path: data.path });
 
   } catch (err) {
