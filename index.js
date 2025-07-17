@@ -9,6 +9,11 @@ import { config } from 'dotenv';
 
 config();
 
+// Ensure uploads and outputs directories exist
+fs.mkdirSync('uploads', { recursive: true });
+fs.mkdirSync('outputs', { recursive: true });
+
+
 const app = express();
 const port = process.env.PORT || 3000;
 const upload = multer({ dest: 'uploads/' });
@@ -52,7 +57,9 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
 
     return res.status(200).json({ success: true, path: responseBody.Key || outputFileName });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error('Transcoding error:', err);
+	return res.status(500).json({ error: err.message });
+
   }
 });
 
