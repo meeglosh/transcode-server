@@ -75,14 +75,18 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
 
-    if (error) {
-      console.error("❌ Supabase upload error:", error);
-      return res.status(500).json({ error: error.message });
-    }
+    console.log("📦 Supabase upload response:");
+    console.log("   data:", data);
+    console.log("   error:", error);
 
-    if (!data || !data.path) {
-      console.error("❌ Missing data.path in Supabase response:", data);
-      return res.status(500).json({ error: 'Upload succeeded but missing data.path' });
+    if (error || !data || typeof data.path !== 'string') {
+      return res.status(500).json({
+        error: 'Upload failed or invalid Supabase response',
+        details: {
+          data,
+          error
+        }
+      });
     }
 
     console.log(`✅ File uploaded to Supabase: ${data.path}`);
