@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: transcode-server
+    env: node
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg
+      npm install
+    startCommand: node index.js
+    plan: free
