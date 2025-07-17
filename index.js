@@ -13,6 +13,18 @@ import path from 'path';
 const app = express();
 const port = process.env.PORT || 3000;
 
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+app.post('/transcode', (req, res, next) => {
+  console.log('🟡 Request headers:', req.headers);
+  console.log('🟡 Incoming transcode POST...');
+  next();
+}, upload.single('audio'), async (req, res) => {
+  console.log('🟢 Multer completed');
+  ...
+});
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.get('/ping', (req, res) => {
