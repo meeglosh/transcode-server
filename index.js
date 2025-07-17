@@ -70,11 +70,12 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
 
     const fileStream = fs.createReadStream(outputPath);
 
-    const { data, error } = await supabase.storage
-      .from('transcoded-audio')
-      .upload(outputFileName, fileStream, {
-        contentType: 'audio/mpeg'
-      });
+const { data, error } = await supabase.storage
+  .from('transcoded-audio')
+  .upload(outputFileName, fs.createReadStream(outputPath), {
+    contentType: 'audio/mpeg',
+    upsert: true
+  });
 
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
