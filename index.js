@@ -12,6 +12,7 @@ config();
 
 const app = express();
 
+// Allow CORS requests from your frontend app
 app.use(cors({
   origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
 }));
@@ -30,7 +31,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   {
     global: {
-      fetch: (url, options = {}) => fetch(url, { ...options, duplex: 'half' })
+      fetch: (url, options = {}) => {
+        return fetch(url, { ...options, duplex: 'half' });
+      }
     }
   }
 );
@@ -38,7 +41,7 @@ const supabase = createClient(
 app.post('/transcode', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const inputPath = req.file.path;
@@ -50,7 +53,9 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', ['-y', '-i', inputPath, '-b:a', '320k', outputPath]);
 
+      ffmpeg.stdout.on('data', data => console.log(`ffmpeg stdout: ${data}`));
       ffmpeg.stderr.on('data', data => console.error(`ffmpeg stderr: ${data}`));
+
       ffmpeg.on('close', code => {
         if (code === 0) {
           console.log(`✅ FFmpeg finished successfully`);
@@ -77,11 +82,12 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
 
     if (error || !data || !data.path) {
       console.error("❌ Supabase upload error or missing path:", error);
-      return res.status(500).json({ error: error?.message || 'Upload failed or missing path' });
+      return res.status(500).json({ error: error?.message || 'Upload failed or missing data.path' });
     }
 
-    const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/transcoded-audio/${outputFileName}`;
-    console.log(`✅ File uploaded and accessible at: ${publicUrl}`);
+    const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/transcoded-audio/${data.path}`;
+
+    console.log(`✅ File uploaded to Supabase: ${publicUrl}`);
     return res.status(200).json({ success: true, url: publicUrl });
 
   } catch (err) {
