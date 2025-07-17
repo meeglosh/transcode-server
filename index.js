@@ -33,7 +33,7 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     console.log(`🎧 Transcoding file: ${req.file.originalname}`);
 
     await new Promise((resolve, reject) => {
-      const ffmpeg = spawn('ffmpeg', ['-i', inputPath, '-b:a', '320k', outputPath]);
+      const ffmpeg = spawn('ffmpeg', ['-y', '-i', inputPath, '-b:a', '320k', outputPath]);
 
       ffmpeg.stdout.on('data', data => console.log(`ffmpeg stdout: ${data}`));
       ffmpeg.stderr.on('data', data => console.error(`ffmpeg stderr: ${data}`));
