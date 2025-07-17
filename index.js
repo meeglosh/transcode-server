@@ -11,11 +11,12 @@ import cors from 'cors';
 config();
 
 const app = express();
-const port = process.env.PORT || 3000;
 
 app.use(cors({
   origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
 }));
+
+const port = process.env.PORT || 3000;
 
 if (!port) {
   console.error("❌ PORT environment variable is not set!");
@@ -29,7 +30,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   {
     global: {
-      fetch: (url, options = {}) => fetch(url, { ...options, duplex: 'half' }),
+      fetch: (url, options = {}) => fetch(url, { ...options, duplex: 'half' })
     }
   }
 );
@@ -37,8 +38,7 @@ const supabase = createClient(
 app.post('/transcode', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) {
-      console.error("❌ No file uploaded in request.");
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
     const inputPath = req.file.path;
@@ -50,9 +50,7 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     await new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', ['-y', '-i', inputPath, '-b:a', '320k', outputPath]);
 
-      ffmpeg.stdout.on('data', data => console.log(`ffmpeg stdout: ${data}`));
       ffmpeg.stderr.on('data', data => console.error(`ffmpeg stderr: ${data}`));
-
       ffmpeg.on('close', code => {
         if (code === 0) {
           console.log(`✅ FFmpeg finished successfully`);
@@ -62,34 +60,29 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
         }
       });
 
-      ffmpeg.on('error', err => reject(new Error(`Failed to start FFmpeg: ${err.message}`)));
+      ffmpeg.on('error', err => {
+        reject(new Error(`Failed to start FFmpeg: ${err.message}`));
+      });
     });
 
-    const fileStream = fs.createReadStream(outputPath);
     const { data, error } = await supabase.storage
       .from('transcoded-audio')
-      .upload(outputFileName, fileStream, {
+      .upload(outputFileName, fs.createReadStream(outputPath), {
         contentType: 'audio/mpeg',
-        upsert: true,
+        upsert: true
       });
-
-    console.log("📦 Supabase response:", { data, error });
 
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
 
-    if (error) {
-      console.error("❌ Supabase upload error:", error);
-      return res.status(500).json({ error: error.message || 'Supabase upload failed' });
+    if (error || !data || !data.path) {
+      console.error("❌ Supabase upload error or missing path:", error);
+      return res.status(500).json({ error: error?.message || 'Upload failed or missing path' });
     }
 
-    if (!data || !data.path) {
-      console.error("❌ Supabase upload missing path:", data);
-      return res.status(500).json({ error: 'Upload succeeded but no path returned' });
-    }
-
-    console.log(`✅ File uploaded to Supabase at: ${data.path}`);
-    return res.status(200).json({ success: true, path: data.path });
+    const publicUrl = `${process.env.SUPABASE_URL}/storage/v1/object/public/transcoded-audio/${outputFileName}`;
+    console.log(`✅ File uploaded and accessible at: ${publicUrl}`);
+    return res.status(200).json({ success: true, url: publicUrl });
 
   } catch (err) {
     console.error("❌ Transcoding error:", err);
