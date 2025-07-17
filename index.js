@@ -18,7 +18,7 @@ app.use(cors({
   origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
 }));
 
-const port = process.env.PORT;
+const port = process.env.PORT || 3000;
 
 if (!port) {
   console.error("❌ PORT environment variable is not set!");
