@@ -6,10 +6,18 @@ import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import { config } from 'dotenv';
+import cors from 'cors';
+
 
 config();
 
 const app = express();
+
+// Allow CORS requests from your frontend app
+app.use(cors({
+  origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
+}));
+
 const port = process.env.PORT;
 
 if (!port) {
