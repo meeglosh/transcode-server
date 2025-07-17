@@ -3,20 +3,25 @@ import express from 'express';
 import multer from 'multer';
 import { spawn } from 'child_process';
 import fs from 'fs';
-import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import path from 'path';
 import { config } from 'dotenv';
 import cors from 'cors';
 
 config();
 
 const app = express();
-const port = process.env.PORT || 3000;
 
-// Allow CORS requests from your frontend app
 app.use(cors({
   origin: 'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com'
 }));
+
+const port = process.env.PORT || 3000;
+
+if (!port) {
+  console.error("❌ PORT environment variable is not set!");
+  process.exit(1);
+}
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -48,7 +53,7 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
 
       ffmpeg.on('close', code => {
         if (code === 0) {
-          console.log('✅ FFmpeg finished successfully');
+          console.log(`✅ FFmpeg finished successfully`);
           resolve();
         } else {
           reject(new Error(`FFmpeg exited with code ${code}`));
@@ -70,16 +75,21 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
 
-    if (error || !data || !data.path) {
-      console.error('❌ Supabase upload error or missing path:', error);
-      return res.status(500).json({ error: error?.message || 'Upload failed or missing data.path' });
+    if (error) {
+      console.error("❌ Supabase upload error:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    if (!data || !data.path) {
+      console.error("❌ Missing data.path in Supabase response:", data);
+      return res.status(500).json({ error: 'Upload succeeded but missing data.path' });
     }
 
     console.log(`✅ File uploaded to Supabase: ${data.path}`);
     return res.status(200).json({ success: true, path: data.path });
 
   } catch (err) {
-    console.error('❌ Transcoding error:', err);
+    console.error("❌ Transcoding error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
