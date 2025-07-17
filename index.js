@@ -80,13 +80,14 @@ const { data, error } = await supabase.storage
     fs.unlinkSync(inputPath);
     fs.unlinkSync(outputPath);
 
-    if (error) {
-      console.error("❌ Supabase upload error:", error);
-      return res.status(500).json({ error: error.message });
-    }
+if (error || !data || !data.path) {
+  console.error("❌ Supabase upload error or missing path:", error);
+  return res.status(500).json({ error: error?.message || 'Upload failed or missing data.path' });
+}
 
-    console.log(`✅ File uploaded to Supabase: ${data.path}`);
-    return res.status(200).json({ success: true, path: data.path });
+console.log(`✅ File uploaded to Supabase: ${data.path}`);
+return res.status(200).json({ success: true, path: data.path });
+
 
   } catch (err) {
     console.error("❌ Transcoding error:", err);
