@@ -21,8 +21,16 @@ const upload = multer({ dest: 'uploads/' });
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    global: {
+      fetch: (url, options = {}) => {
+        return fetch(url, { ...options, duplex: 'half' });
+      }
+    }
+  }
 );
+
 
 app.post('/transcode', upload.single('audio'), async (req, res) => {
   try {
