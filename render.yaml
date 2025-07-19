@@ -7,3 +7,13 @@ services:
       npm install
     startCommand: node index.js
     plan: free
+
+  - type: static
+    name: wovenmusic-frontend
+    env: static
+    buildCommand: npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
