@@ -29,21 +29,28 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
   const { originalname } = file;
   const fileId = uuidv4();
   const inputPath = `/tmp/${fileId}-${originalname}`;
-  const requestedFormat = (req.query.format || 'mp3').toLowerCase();
-  const outputFormat = requestedFormat === 'aac' ? 'aac' : 'mp3';
-  const outputExt = outputFormat === 'aac' ? 'm4a' : 'mp3';
-  const contentType = outputFormat === 'aac' ? 'audio/mp4' : 'audio/mpeg';
-  const outputPath = `/tmp/${fileId}.${outputExt}`;
+  let requestedFormat = (req.query.format || 'mp3').toLowerCase();
 
-  console.log(`\n=== Transcoding ${originalname} to ${outputFormat} ===`);
+  // Validate supported formats
+  if (!['aac', 'mp3'].includes(requestedFormat)) {
+    return res.status(400).json({ error: `Unsupported format: ${requestedFormat}` });
+  }
+
+  // Dynamic vars based on output format
+  let outputFormat = requestedFormat;
+  let outputExt = outputFormat === 'aac' ? 'm4a' : 'mp3';
+  let contentType = outputFormat === 'aac' ? 'audio/mp4' : 'audio/mpeg';
+  let outputPath = `/tmp/${fileId}.${outputExt}`;
+
+  console.log(`\n=== Transcoding ${originalname} to ${outputFormat.toUpperCase()} ===`);
 
   try {
     await fs.writeFile(inputPath, file.buffer);
 
-    const transcodeTo = (format, outPath) => {
+    const transcodeTo = (codec, outPath) => {
       return new Promise((resolve, reject) => {
         ffmpeg(inputPath)
-          .audioCodec(format === 'aac' ? 'aac' : 'libmp3lame')
+          .audioCodec(codec)
           .audioBitrate(320)
           .audioChannels(2)
           .audioFrequency(44100)
@@ -54,17 +61,18 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     };
 
     try {
-      await transcodeTo(outputFormat, outputPath);
+      const codec = outputFormat === 'aac' ? 'aac' : 'libmp3lame';
+      await transcodeTo(codec, outputPath);
     } catch (primaryError) {
-      console.warn(`Primary transcode to ${outputFormat} failed:`, primaryError);
+      console.warn(`⚠️ Primary transcode to ${outputFormat} failed:`, primaryError);
 
       if (outputFormat !== 'mp3') {
-        console.log('Falling back to MP3...');
+        console.log('🔁 Falling back to MP3...');
         outputFormat = 'mp3';
         outputExt = 'mp3';
         contentType = 'audio/mpeg';
-        const fallbackPath = `/tmp/${fileId}.mp3`;
-        await transcodeTo('mp3', fallbackPath);
+        outputPath = `/tmp/${fileId}.mp3`;
+        await transcodeTo('libmp3lame', outputPath);
       } else {
         throw primaryError;
       }
@@ -75,17 +83,17 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    const fileBuffer = await fs.readFile(`/tmp/${fileId}.${outputExt}`);
+    const fileBuffer = await fs.readFile(outputPath);
 
-    const { data, error } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('transcoded-audio')
       .upload(`${fileId}.${outputExt}`, fileBuffer, {
         contentType,
         upsert: true
       });
 
-    if (error) {
-      console.error('Upload error:', error);
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
       return res.status(500).json({ error: 'Upload to Supabase failed.' });
     }
 
@@ -105,13 +113,8 @@ app.post('/transcode', upload.single('audio'), async (req, res) => {
     console.error('❌ Transcoding pipeline error:', err);
     res.status(500).json({ error: 'Transcoding failed' });
   } finally {
-    // Clean up
-    try {
-      await fs.unlink(inputPath);
-      await fs.unlink(outputPath);
-    } catch (e) {
-      // File might not exist
-    }
+    try { await fs.unlink(inputPath); } catch {}
+    try { await fs.unlink(outputPath); } catch {}
   }
 });
 
