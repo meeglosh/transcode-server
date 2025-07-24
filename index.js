@@ -24,7 +24,7 @@ app.get('/health', (req, res) => {
   res.send('OK');
 });
 
-app.post('/transcode', upload.single('audio'), async (req, res) => {
+app.post('/api/transcode', upload.single('audio'), async (req, res) => {
   const { file } = req;
   const { originalname } = file;
   const fileId = uuidv4();
