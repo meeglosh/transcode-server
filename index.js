@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 
 const app = express();
 const upload = multer();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(cors({
   origin: [
