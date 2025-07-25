@@ -6,10 +6,12 @@ import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
+import fetch from 'node-fetch';
 
 const app = express();
 const upload = multer();
 const PORT = process.env.PORT || 3000;
+
 app.use(cors({
   origin: [
     'https://wovenmusic.app',
@@ -21,98 +23,101 @@ app.use(cors({
   credentials: true
 }));
 
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (req, res) => {
   res.send('OK');
 });
 
 app.post('/api/transcode', upload.single('audio'), async (req, res) => {
-  const { file } = req;
-  const { originalname } = file;
-  const fileId = uuidv4();
-  const inputPath = `/tmp/${fileId}-${originalname}`;
-  let requestedFormat = (req.query.format || 'mp3').toLowerCase();
+  let fileBuffer;
+  let fileName;
+  let source = '';
 
-  // Validate supported formats
-  if (!['aac', 'mp3'].includes(requestedFormat)) {
-    return res.status(400).json({ error: `Unsupported format: ${requestedFormat}` });
+  const fileId = uuidv4();
+  const outputFormat = (req.body.outputFormat || 'mp3').toLowerCase();
+  const bitrate = (req.body.bitrate || '320k').replace('k', '');
+  const supportedFormats = ['aac', 'mp3'];
+
+  if (!supportedFormats.includes(outputFormat)) {
+    return res.status(400).json({ error: `Unsupported format: ${outputFormat}` });
   }
 
-  // Dynamic vars based on output format
-  let outputFormat = requestedFormat;
-  let outputExt = outputFormat === 'aac' ? 'm4a' : 'mp3';
-  let contentType = outputFormat === 'aac' ? 'audio/mp4' : 'audio/mpeg';
-  let outputPath = `/tmp/${fileId}.${outputExt}`;
+  const ext = outputFormat === 'aac' ? 'm4a' : 'mp3';
+  const codec = outputFormat === 'aac' ? 'aac' : 'libmp3lame';
+  const contentType = outputFormat === 'aac' ? 'audio/mp4' : 'audio/mpeg';
+  const inputPath = `/tmp/${fileId}-input`;
+  const outputPath = `/tmp/${fileId}.${ext}`;
 
-  console.log(`\n=== Transcoding ${originalname} to ${outputFormat.toUpperCase()} ===`);
+  if (req.file) {
+    fileBuffer = req.file.buffer;
+    fileName = req.file.originalname;
+    source = 'upload';
+  } else if (req.body.audioUrl && req.body.fileName) {
+    try {
+      const response = await fetch(req.body.audioUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const arrayBuffer = await response.arrayBuffer();
+      fileBuffer = Buffer.from(arrayBuffer);
+      fileName = req.body.fileName;
+      source = 'url';
+    } catch (err) {
+      console.error('❌ Error fetching remote audio file:', err);
+      return res.status(500).json({ error: 'Failed to download remote audio file' });
+    }
+  } else {
+    return res.status(400).json({ error: 'No audio file or URL provided' });
+  }
 
   try {
-    await fs.writeFile(inputPath, file.buffer);
+    await fs.writeFile(inputPath, fileBuffer);
 
-    const transcodeTo = (codec, outPath) => {
-      return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-          .audioCodec(codec)
-          .audioBitrate(320)
-          .audioChannels(2)
-          .audioFrequency(44100)
-          .on('end', () => resolve(outPath))
-          .on('error', reject)
-          .save(outPath);
-      });
-    };
-
-    try {
-      const codec = outputFormat === 'aac' ? 'aac' : 'libmp3lame';
-      await transcodeTo(codec, outputPath);
-    } catch (primaryError) {
-      console.warn(`⚠️ Primary transcode to ${outputFormat} failed:`, primaryError);
-
-      if (outputFormat !== 'mp3') {
-        console.log('🔁 Falling back to MP3...');
-        outputFormat = 'mp3';
-        outputExt = 'mp3';
-        contentType = 'audio/mpeg';
-        outputPath = `/tmp/${fileId}.mp3`;
-        await transcodeTo('libmp3lame', outputPath);
-      } else {
-        throw primaryError;
-      }
-    }
+    console.log(`🎧 Transcoding (${source}): ${fileName} → ${outputFormat.toUpperCase()}`);
+    await new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .audioCodec(codec)
+        .audioBitrate(bitrate)
+        .audioChannels(2)
+        .audioFrequency(44100)
+        .on('end', resolve)
+        .on('error', reject)
+        .save(outputPath);
+    });
 
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    const fileBuffer = await fs.readFile(outputPath);
+    const transcodedBuffer = await fs.readFile(outputPath);
 
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { data, error } = await supabase.storage
       .from('transcoded-audio')
-      .upload(`${fileId}.${outputExt}`, fileBuffer, {
+      .upload(`${fileId}.${ext}`, transcodedBuffer, {
         contentType,
         upsert: true
       });
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      return res.status(500).json({ error: 'Upload to Supabase failed.' });
+    if (error) {
+      console.error('❌ Supabase upload error:', error);
+      return res.status(500).json({ error: 'Failed to upload to Supabase' });
     }
 
     const {
       data: { publicUrl }
-    } = supabase.storage
-      .from('transcoded-audio')
-      .getPublicUrl(`${fileId}.${outputExt}`);
+    } = supabase.storage.from('transcoded-audio').getPublicUrl(`${fileId}.${ext}`);
 
     console.log(`✅ Transcoding successful: ${publicUrl}`);
 
     res.json({
       publicUrl,
-      originalFilename: path.parse(originalname).name
+      originalFilename: path.parse(fileName).name,
+      originalSize: fileBuffer.length,
+      transcodedSize: transcodedBuffer.length
     });
   } catch (err) {
-    console.error('❌ Transcoding pipeline error:', err);
+    console.error('❌ Transcoding pipeline failed:', err);
     res.status(500).json({ error: 'Transcoding failed' });
   } finally {
     try { await fs.unlink(inputPath); } catch {}
