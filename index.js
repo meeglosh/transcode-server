@@ -12,9 +12,15 @@ const upload = multer();
 const PORT = process.env.PORT || 3000;
 const cors = require('cors');
 app.use(cors({
-  origin: 'https://wovenmusic.app' // or '*', but more secure to specify
+  origin: [
+    'https://wovenmusic.app',
+    'https://964c4d45-feaa-4b3e-9e2b-b8dbb89f0f2f.lovableproject.com',
+    'http://localhost:5173'
+  ],
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type'],
+  credentials: true
 }));
-
 
 
 app.get('/health', (req, res) => {
