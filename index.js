@@ -10,7 +10,6 @@ import fs from 'fs/promises';
 const app = express();
 const upload = multer();
 const PORT = process.env.PORT || 3000;
-const cors = require('cors');
 app.use(cors({
   origin: [
     'https://wovenmusic.app',
