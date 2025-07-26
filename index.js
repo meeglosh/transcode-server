@@ -40,23 +40,37 @@ app.post('/api/transcode', upload.single('audio'), async (req, res) => {
   const fileId = uuidv4();
   const outputFormat = (req.body.outputFormat || 'mp3').toLowerCase();
   const bitrate = (req.body.bitrate || '320k').replace('k', '');
-  const supportedFormats = ['aac', 'mp3'];
+  const supportedFormats = ['aac', 'mp3', 'alac'];
 
   if (!supportedFormats.includes(outputFormat)) {
     return res.status(400).json({ error: `Unsupported format: ${outputFormat}` });
   }
 
-  const ext = outputFormat === 'aac' ? 'm4a' : 'mp3';
-  const codec = outputFormat === 'aac' ? 'aac' : 'libmp3lame';
-  const contentType = outputFormat === 'aac' ? 'audio/mp4' : 'audio/mpeg';
+  // Determine output file properties
+  let ext, codec, contentType;
+  if (outputFormat === 'aac') {
+    ext = 'm4a';
+    codec = 'aac';
+    contentType = 'audio/mp4';
+  } else if (outputFormat === 'alac') {
+    ext = 'm4a';
+    codec = 'alac';
+    contentType = 'audio/mp4'; // ALAC is typically stored in .m4a container
+  } else {
+    ext = 'mp3';
+    codec = 'libmp3lame';
+    contentType = 'audio/mpeg';
+  }
+
   const inputPath = `/tmp/${fileId}-input`;
   const outputPath = `/tmp/${fileId}.${ext}`;
 
+  // Load audio input (uploaded or from URL)
   if (req.file) {
-  console.log('📤 Received file upload:', req.file.originalname, req.file.mimetype);
-  fileBuffer = req.file.buffer;
-  fileName = req.file.originalname;
-  source = 'upload';
+    console.log('📤 Received file upload:', req.file.originalname, req.file.mimetype);
+    fileBuffer = req.file.buffer;
+    fileName = req.file.originalname;
+    source = 'upload';
   } else if (req.body.audioUrl && req.body.fileName) {
     try {
       const response = await fetch(req.body.audioUrl);
@@ -77,15 +91,20 @@ app.post('/api/transcode', upload.single('audio'), async (req, res) => {
     await fs.writeFile(inputPath, fileBuffer);
 
     console.log(`🎧 Transcoding (${source}): ${fileName} → ${outputFormat.toUpperCase()}`);
+
     await new Promise((resolve, reject) => {
-      ffmpeg(inputPath)
+      const command = ffmpeg(inputPath)
         .audioCodec(codec)
-        .audioBitrate(bitrate)
         .audioChannels(2)
         .audioFrequency(44100)
         .on('end', resolve)
-        .on('error', reject)
-        .save(outputPath);
+        .on('error', reject);
+
+      if (outputFormat !== 'alac') {
+        command.audioBitrate(bitrate);
+      }
+
+      command.save(outputPath);
     });
 
     const supabase = createClient(
