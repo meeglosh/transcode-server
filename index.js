@@ -51,9 +51,10 @@ app.post('/api/transcode', upload.single('audio'), async (req, res) => {
   const outputPath = `/tmp/${fileId}.${ext}`;
 
   if (req.file) {
-    fileBuffer = req.file.buffer;
-    fileName = req.file.originalname;
-    source = 'upload';
+  console.log('📤 Received file upload:', req.file.originalname, req.file.mimetype);
+  fileBuffer = req.file.buffer;
+  fileName = req.file.originalname;
+  source = 'upload';
   } else if (req.body.audioUrl && req.body.fileName) {
     try {
       const response = await fetch(req.body.audioUrl);
