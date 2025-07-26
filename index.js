@@ -9,7 +9,9 @@ import fs from 'fs/promises';
 import fetch from 'node-fetch';
 
 const app = express();
-const upload = multer();
+const upload = multer({
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 const PORT = process.env.PORT || 3000;
 
 app.use(cors({
